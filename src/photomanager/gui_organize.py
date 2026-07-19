@@ -123,7 +123,7 @@ class OrganizeApp:
 
         if kind == "preview_done":
             self.plan = payload
-            self._write_output(summarize_plan(self.plan))
+            self._write_output(summarize_plan(self.plan, full_list=True))
             self.apply_btn.configure(state=tk.NORMAL if self.plan.moves else tk.DISABLED)
             self._set_busy(False, f"미리보기 완료. 이동 대상 {len(self.plan.moves)}개.")
         elif kind == "apply_done":

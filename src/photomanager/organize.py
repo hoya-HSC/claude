@@ -159,11 +159,15 @@ def apply_plan(plan: OrganizePlan) -> int:
     return moved
 
 
-def summarize_plan(plan: OrganizePlan, *, mtime_preview_limit: int = 30) -> str:
+def summarize_plan(
+    plan: OrganizePlan, *, mtime_preview_limit: int = 30, full_list: bool = False
+) -> str:
     """Human-readable plan summary shared by the CLI and the GUI.
 
     Per-date-folder counts instead of a flat file list, since a messy library
     can produce hundreds of moves that a line-by-line dump makes unreadable.
+    Pass full_list=True to append every planned move after a divider (the
+    GUI does this instead of requiring a CSV export).
     """
     by_source = Counter(mv.date_source for mv in plan.moves)
     folder_counts = Counter(mv.dest.parent.name for mv in plan.moves)
@@ -187,5 +191,13 @@ def summarize_plan(plan: OrganizePlan, *, mtime_preview_limit: int = 30) -> str:
             lines.append(f"  {mv.source.name}  ->  {mv.dest.parent.name}/")
         if len(mtime_moves) > mtime_preview_limit:
             lines.append(f"  ... 외 {len(mtime_moves) - mtime_preview_limit}개")
+
+    if full_list and plan.moves:
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append(f"전체 이동 목록 ({len(plan.moves)}개)")
+        lines.append("=" * 50)
+        for mv in plan.moves:
+            lines.append(f"  {mv.source.name}  ->  {mv.dest.parent.name}/  [{mv.date_source}]")
 
     return "\n".join(lines)

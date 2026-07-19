@@ -108,3 +108,22 @@ def test_summarize_plan_truncates_long_mtime_list(tmp_path):
     summary = organize.summarize_plan(plan, mtime_preview_limit=2)
 
     assert "외 3개" in summary
+
+
+def test_summarize_plan_full_list_includes_every_move(tmp_path):
+    for i in range(40):
+        _touch(tmp_path / f"IMG_20250115_{i}.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    summary_short = organize.summarize_plan(plan)
+    summary_full = organize.summarize_plan(plan, full_list=True)
+
+    assert "전체 이동 목록" not in summary_short
+    assert "전체 이동 목록 (40개)" in summary_full
+    for i in range(40):
+        assert f"IMG_20250115_{i}.jpg" in summary_full
+
+
+def test_summarize_plan_full_list_omitted_when_nothing_to_move(tmp_path):
+    summary = organize.summarize_plan(organize.OrganizePlan(), full_list=True)
+    assert "전체 이동 목록" not in summary

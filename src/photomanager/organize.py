@@ -193,11 +193,18 @@ def summarize_plan(
             lines.append(f"  ... 외 {len(mtime_moves) - mtime_preview_limit}개")
 
     if full_list and plan.moves:
+        by_folder: dict[str, list[PlannedMove]] = {}
+        for mv in plan.moves:
+            by_folder.setdefault(mv.dest.parent.name, []).append(mv)
+
         lines.append("")
         lines.append("=" * 50)
-        lines.append(f"전체 이동 목록 ({len(plan.moves)}개)")
+        lines.append(f"전체 이동 목록 ({len(plan.moves)}개, 날짜 폴더별)")
         lines.append("=" * 50)
-        for mv in plan.moves:
-            lines.append(f"  {mv.source.name}  ->  {mv.dest.parent.name}/  [{mv.date_source}]")
+        for folder in sorted(by_folder):
+            moves = by_folder[folder]
+            lines.append(f"\n{folder}/  ({len(moves)}개)")
+            for mv in sorted(moves, key=lambda m: m.source.name):
+                lines.append(f"  {mv.source.name}  [{mv.date_source}]")
 
     return "\n".join(lines)

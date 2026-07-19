@@ -119,9 +119,34 @@ def test_summarize_plan_full_list_includes_every_move(tmp_path):
     summary_full = organize.summarize_plan(plan, full_list=True)
 
     assert "전체 이동 목록" not in summary_short
-    assert "전체 이동 목록 (40개)" in summary_full
+    assert "전체 이동 목록 (40개, 날짜 폴더별)" in summary_full
     for i in range(40):
         assert f"IMG_20250115_{i}.jpg" in summary_full
+
+
+def test_summarize_plan_full_list_groups_by_destination_folder(tmp_path):
+    """Files must be listed under their destination folder heading, not in
+    scan order -- interleaved dates (as in the original flat list) is exactly
+    what confused the user."""
+    _touch(tmp_path / "IMG_20250115_a.jpg")
+    _touch(tmp_path / "IMG_20241231_b.jpg")
+    _touch(tmp_path / "IMG_20250115_c.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    summary = organize.summarize_plan(plan, full_list=True)
+
+    # folders sorted alphabetically -> 2024-12-31 heading comes first
+    dec_heading = summary.index("2024-12-31/  (1개)")
+    jan_heading = summary.index("2025-01-15/  (2개)")
+    b_pos = summary.index("IMG_20241231_b.jpg")
+    a_pos = summary.index("IMG_20250115_a.jpg")
+    c_pos = summary.index("IMG_20250115_c.jpg")
+
+    assert dec_heading < jan_heading
+    # the December file sits under its own heading, before the January one
+    assert dec_heading < b_pos < jan_heading
+    # both January files sit under the January heading, not scattered earlier
+    assert jan_heading < a_pos and jan_heading < c_pos
 
 
 def test_summarize_plan_full_list_omitted_when_nothing_to_move(tmp_path):

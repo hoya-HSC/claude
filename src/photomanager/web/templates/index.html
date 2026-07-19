@@ -9,6 +9,11 @@
   .cluster { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
   .thumbs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .thumbs img { width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; }
+  .thumb-fallback {
+    width: 90px; height: 90px; border-radius: 4px; border: 1px solid #ccc;
+    background: #eee; display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem;
+  }
   .cluster form { margin-top: 0.75rem; display: flex; gap: 0.5rem; }
   input[type=text] { padding: 0.4rem; flex: 1; }
   button { padding: 0.4rem 0.9rem; cursor: pointer; }
@@ -33,17 +38,28 @@ async function loadClusters() {
   for (const c of clusters) {
     const div = document.createElement('div');
     div.className = 'cluster';
-    const thumbs = c.sample_face_ids.map(id =>
-      `<img src="/api/faces/${id}/image" loading="lazy">`
-    ).join('');
     div.innerHTML = `
       <div class="meta">군집 #${c.cluster_label} — 얼굴 ${c.size}개</div>
-      <div class="thumbs">${thumbs}</div>
+      <div class="thumbs"></div>
       <form data-ids='${JSON.stringify(c.sample_face_ids)}'>
         <input type="text" placeholder="이름 입력 (예: 엄마)" required>
         <button type="submit">이 사람으로 확정</button>
       </form>
     `;
+    const thumbsEl = div.querySelector('.thumbs');
+    for (const id of c.sample_face_ids) {
+      const img = document.createElement('img');
+      img.src = `/api/faces/${id}/image`;
+      img.loading = 'lazy';
+      img.onerror = () => {
+        const fallback = document.createElement('div');
+        fallback.className = 'thumb-fallback';
+        fallback.title = '동영상 얼굴 - 미리보기 준비중';
+        fallback.textContent = '🎥';
+        img.replaceWith(fallback);
+      };
+      thumbsEl.appendChild(img);
+    }
     div.querySelector('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const form = ev.target;

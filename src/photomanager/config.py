@@ -42,6 +42,12 @@ class Config:
     dated by mtime, interpolate from the nearest EXIF/filename-dated files
     before/after it in the same folder instead of trusting mtime outright."""
 
+    estimate_max_days_from_mtime: float = 3.0
+    """Discard a neighbor-interpolated date if it disagrees with the file's
+    own mtime by more than this many days -- mtime is real evidence too, and
+    a burst of same-day videos sitting near an unrelated dated photo from a
+    different session should not get smeared across that gap."""
+
 
 def load_config() -> Config:
     cfg = Config()

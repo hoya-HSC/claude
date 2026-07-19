@@ -92,9 +92,12 @@ def extract_video_metadata(path: Path) -> MediaMetadata:
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return MediaMetadata(None, None, None)
 
+    if not proc.stdout:
+        return MediaMetadata(None, None, None)
+
     try:
         data = json.loads(proc.stdout)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return MediaMetadata(None, None, None)
 
     tags = data.get("format", {}).get("tags", {})

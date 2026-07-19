@@ -1,10 +1,13 @@
+import subprocess
 from datetime import datetime
+from unittest.mock import patch
 
 from photomanager.metadata import (
     _parse_exif_datetime,
     _parse_gps_ifd,
     _parse_video_datetime,
     _parse_video_gps,
+    extract_video_metadata,
 )
 
 
@@ -50,3 +53,45 @@ def test_parse_video_gps_iso6709():
 
 def test_parse_video_gps_missing():
     assert _parse_video_gps(None) == (None, None)
+
+
+def _fake_proc(stdout):
+    return subprocess.CompletedProcess(args=["ffprobe"], returncode=0, stdout=stdout, stderr="")
+
+
+def test_extract_video_metadata_handles_none_stdout(tmp_path):
+    """ffprobe can return an empty/None stdout for a corrupt or unreadable
+    video; json.loads(None) raises TypeError, not JSONDecodeError, which the
+    original except clause didn't catch -- surfaced as 'the JSON object must
+    be str, bytes or bytearray, not NoneType' crashing the whole organize run."""
+    p = tmp_path / "broken.mp4"
+    p.write_bytes(b"")
+    with patch("subprocess.run", return_value=_fake_proc(None)):
+        meta = extract_video_metadata(p)
+    assert meta.taken_at is None
+    assert meta.gps_lat is None
+
+
+def test_extract_video_metadata_handles_empty_stdout(tmp_path):
+    p = tmp_path / "broken.mp4"
+    p.write_bytes(b"")
+    with patch("subprocess.run", return_value=_fake_proc("")):
+        meta = extract_video_metadata(p)
+    assert meta.taken_at is None
+
+
+def test_extract_video_metadata_handles_malformed_json(tmp_path):
+    p = tmp_path / "broken.mp4"
+    p.write_bytes(b"")
+    with patch("subprocess.run", return_value=_fake_proc("not json")):
+        meta = extract_video_metadata(p)
+    assert meta.taken_at is None
+
+
+def test_extract_video_metadata_parses_valid_output(tmp_path):
+    p = tmp_path / "ok.mp4"
+    p.write_bytes(b"")
+    stdout = '{"format": {"tags": {"creation_time": "2025-01-15T10:00:00.000000Z"}}}'
+    with patch("subprocess.run", return_value=_fake_proc(stdout)):
+        meta = extract_video_metadata(p)
+    assert meta.taken_at == datetime(2025, 1, 15, 10, 0, 0)

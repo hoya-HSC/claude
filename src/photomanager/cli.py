@@ -78,31 +78,7 @@ def main() -> None:
             raise SystemExit(f"not a directory: {directory}")
 
         plan = organize.build_plan(directory, cfg)
-        by_source = {"exif": 0, "filename": 0, "mtime": 0}
-        for mv in plan.moves:
-            by_source[mv.date_source] += 1
-
-        print(f"이동 대상: {len(plan.moves)}개 "
-              f"(EXIF/메타 {by_source['exif']}, 파일명 {by_source['filename']}, 수정시간 {by_source['mtime']})")
-        print(f"이미 같은 파일 존재(중복, 건너뜀): {len(plan.duplicates)}개")
-        print(f"이미 날짜 폴더에 있음: {plan.skipped_already_sorted}개")
-
-        # Per-destination-folder summary, so hundreds of files stay readable.
-        from collections import Counter
-        folder_counts = Counter(mv.dest.parent.name for mv in plan.moves)
-        print(f"\n생성될 날짜 폴더: {len(folder_counts)}개")
-        for folder, count in sorted(folder_counts.items()):
-            print(f"  {folder}/   {count}개")
-
-        # mtime-dated files are the least reliable (no EXIF, no date in name),
-        # so surface those specifically -- they're the ones worth eyeballing.
-        mtime_moves = [mv for mv in plan.moves if mv.date_source == "mtime"]
-        if mtime_moves:
-            print(f"\n※ 수정시간으로 추정된 파일 {len(mtime_moves)}개 (촬영일과 다를 수 있음):")
-            for mv in mtime_moves[:15]:
-                print(f"  {mv.source.name}  ->  {mv.dest.parent.name}/")
-            if len(mtime_moves) > 15:
-                print(f"  ... 외 {len(mtime_moves) - 15}개 (전체는 --report 로 CSV 저장)")
+        print(organize.summarize_plan(plan, mtime_preview_limit=15))
 
         if args.list:
             print("\n[전체 목록]")

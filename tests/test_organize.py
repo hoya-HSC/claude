@@ -83,3 +83,28 @@ def test_dry_run_does_not_move(tmp_path):
     _touch(f)
     organize.build_plan(tmp_path, Config())  # planning only
     assert f.exists()  # still there, nothing moved
+
+
+def test_summarize_plan_reports_counts_and_folders(tmp_path):
+    for i in range(3):
+        _touch(tmp_path / f"IMG_20250115_{i}.jpg")
+    _touch(tmp_path / "randomname.jpg", mtime=datetime(2021, 3, 9).timestamp())
+
+    plan = organize.build_plan(tmp_path, Config())
+    summary = organize.summarize_plan(plan)
+
+    assert "이동 대상: 4개" in summary
+    assert "2025-01-15/   3개" in summary
+    assert "2021-03-09/   1개" in summary
+    assert "수정시간으로 추정된 파일 1개" in summary
+    assert "randomname.jpg" in summary
+
+
+def test_summarize_plan_truncates_long_mtime_list(tmp_path):
+    for i in range(5):
+        _touch(tmp_path / f"random{i}.jpg", mtime=datetime(2021, 3, 9).timestamp())
+
+    plan = organize.build_plan(tmp_path, Config())
+    summary = organize.summarize_plan(plan, mtime_preview_limit=2)
+
+    assert "외 3개" in summary

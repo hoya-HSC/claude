@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -156,3 +157,35 @@ def apply_plan(plan: OrganizePlan) -> int:
         shutil.move(str(mv.source), str(mv.dest))
         moved += 1
     return moved
+
+
+def summarize_plan(plan: OrganizePlan, *, mtime_preview_limit: int = 30) -> str:
+    """Human-readable plan summary shared by the CLI and the GUI.
+
+    Per-date-folder counts instead of a flat file list, since a messy library
+    can produce hundreds of moves that a line-by-line dump makes unreadable.
+    """
+    by_source = Counter(mv.date_source for mv in plan.moves)
+    folder_counts = Counter(mv.dest.parent.name for mv in plan.moves)
+
+    lines = [
+        f"이동 대상: {len(plan.moves)}개  "
+        f"(EXIF/메타 {by_source['exif']}, 파일명 {by_source['filename']}, 수정시간 {by_source['mtime']})",
+        f"이미 같은 파일 존재(중복, 건너뜀): {len(plan.duplicates)}개",
+        f"이미 날짜 폴더에 있음: {plan.skipped_already_sorted}개",
+        "",
+        f"생성될 날짜 폴더: {len(folder_counts)}개",
+    ]
+    for folder, count in sorted(folder_counts.items()):
+        lines.append(f"  {folder}/   {count}개")
+
+    mtime_moves = [mv for mv in plan.moves if mv.date_source == "mtime"]
+    if mtime_moves:
+        lines.append("")
+        lines.append(f"※ 수정시간으로 추정된 파일 {len(mtime_moves)}개 (촬영일과 다를 수 있음, 확인 권장):")
+        for mv in mtime_moves[:mtime_preview_limit]:
+            lines.append(f"  {mv.source.name}  ->  {mv.dest.parent.name}/")
+        if len(mtime_moves) > mtime_preview_limit:
+            lines.append(f"  ... 외 {len(mtime_moves) - mtime_preview_limit}개")
+
+    return "\n".join(lines)

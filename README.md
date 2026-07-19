@@ -66,6 +66,29 @@ photomanager organize "F:\00. image\정리안된폴더" --apply
   건너뛰고, 다르면 ` (1)` 을 붙여 **기존 파일을 덮어쓰지 않습니다**.
 - 원본 사진에는 어떤 메타데이터도 쓰지 않습니다(이동만).
 
+#### GUI로 쓰기 (명령어 없이)
+
+같은 기능을 창 하나로 쓸 수 있는 GUI도 있습니다. 폴더 선택 → 미리보기 →
+확인 버튼 순서로, 명령어를 칠 필요가 없습니다. 추가 라이브러리 설치도
+필요 없습니다 (Tkinter는 파이썬 기본 내장).
+
+```powershell
+photomanager-organize-gui
+```
+
+이 GUI 자체는 리소스를 거의 쓰지 않습니다 — 창을 띄우는 것뿐이고, 실제
+스캔 작업(디스크 읽기)은 명령어로 실행할 때와 동일합니다.
+
+**바탕화면에서 더블클릭으로 실행하려면**, 아래 내용을 메모장에 붙여넣고
+"모든 파일" 형식으로 `사진정리.bat` 이름으로 바탕화면에 저장하세요:
+
+```bat
+@echo off
+call C:\Users\%USERNAME%\miniconda3\Scripts\activate.bat
+call conda activate photomanager
+start "" photomanager-organize-gui
+```
+
 정리 후 파일 위치가 바뀌어도, 아래 `run` 스캔은 **내용 해시로 식별**하므로
 얼굴 인식 등을 다시 하지 않고 경로만 갱신합니다.
 

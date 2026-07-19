@@ -1,0 +1,22 @@
+name: photomanager
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - cudatoolkit=11.8
+  - cudnn=8.9
+  - ffmpeg
+  - pip
+  - pip:
+      - Pillow>=10.0
+      - fastapi>=0.110
+      - uvicorn[standard]>=0.29
+      - numpy>=1.26
+      - reverse_geocoder>=1.5
+      - scenedetect[opencv]>=0.6
+      - insightface>=0.7.3
+      - onnx>=1.15
+      - onnxruntime-gpu>=1.17,<1.19
+      - hdbscan>=0.8.33
+      - faiss-cpu>=1.8
+      - -e ..

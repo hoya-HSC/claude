@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Photo Manager - 인물 검수</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; background: #f7f7f8; }
+  h1 { font-size: 1.4rem; }
+  .cluster { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+  .thumbs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .thumbs img { width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; }
+  .cluster form { margin-top: 0.75rem; display: flex; gap: 0.5rem; }
+  input[type=text] { padding: 0.4rem; flex: 1; }
+  button { padding: 0.4rem 0.9rem; cursor: pointer; }
+  .meta { color: #666; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<h1>인물로 추정되는 얼굴 군집 검수</h1>
+<p class="meta">아직 이름이 없는 얼굴들을 유사도 기준으로 묶은 결과입니다. 같은 사람이면 이름을 입력해 확정하세요.</p>
+<div id="clusters"></div>
+
+<script>
+async function loadClusters() {
+  const res = await fetch('/api/clusters');
+  const clusters = await res.json();
+  const root = document.getElementById('clusters');
+  root.innerHTML = '';
+  if (clusters.length === 0) {
+    root.innerHTML = '<p>검수할 군집이 없습니다.</p>';
+    return;
+  }
+  for (const c of clusters) {
+    const div = document.createElement('div');
+    div.className = 'cluster';
+    const thumbs = c.sample_face_ids.map(id =>
+      `<img src="/api/faces/${id}/image" loading="lazy">`
+    ).join('');
+    div.innerHTML = `
+      <div class="meta">군집 #${c.cluster_label} — 얼굴 ${c.size}개</div>
+      <div class="thumbs">${thumbs}</div>
+      <form data-ids='${JSON.stringify(c.sample_face_ids)}'>
+        <input type="text" placeholder="이름 입력 (예: 엄마)" required>
+        <button type="submit">이 사람으로 확정</button>
+      </form>
+    `;
+    div.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      const name = form.querySelector('input').value.trim();
+      const face_ids = JSON.parse(form.dataset.ids);
+      await fetch('/api/people/name-cluster', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, face_ids}),
+      });
+      loadClusters();
+    });
+    root.appendChild(div);
+  }
+}
+loadClusters();
+</script>
+</body>
+</html>

@@ -90,7 +90,10 @@ def test_summarize_plan_reports_counts_and_folders(tmp_path):
         _touch(tmp_path / f"IMG_20250115_{i}.jpg")
     _touch(tmp_path / "randomname.jpg", mtime=datetime(2021, 3, 9).timestamp())
 
-    plan = organize.build_plan(tmp_path, Config())
+    # Neighbor estimation is exercised separately below; disable it here so
+    # this test stays a pure check of the summary's counts/formatting.
+    cfg = Config(estimate_missing_dates_from_neighbors=False)
+    plan = organize.build_plan(tmp_path, cfg)
     summary = organize.summarize_plan(plan)
 
     assert "이동 대상: 4개" in summary
@@ -152,3 +155,64 @@ def test_summarize_plan_full_list_groups_by_destination_folder(tmp_path):
 def test_summarize_plan_full_list_omitted_when_nothing_to_move(tmp_path):
     summary = organize.summarize_plan(organize.OrganizePlan(), full_list=True)
     assert "전체 이동 목록" not in summary
+
+
+# --- neighbor-based date estimation (for videos with no EXIF/media date) ---
+
+def test_video_between_two_dated_photos_is_interpolated(tmp_path):
+    # sorted order: a_20250110 < b_video < c_20250120
+    _touch(tmp_path / "a_20250110.jpg")
+    _touch(tmp_path / "b_video.mp4", mtime=datetime(1999, 1, 1).timestamp())
+    _touch(tmp_path / "c_20250120.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "b_video.mp4")
+
+    assert video_move.date_source == "estimated"
+    # halfway between 01-10 and 01-20 -> 01-15
+    assert video_move.dest.parent.name == "2025-01-15"
+
+
+def test_video_with_only_earlier_neighbor_uses_that_date(tmp_path):
+    _touch(tmp_path / "a_20250110.jpg")
+    _touch(tmp_path / "z_video.mp4", mtime=datetime(1999, 1, 1).timestamp())
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "z_video.mp4")
+
+    assert video_move.date_source == "estimated"
+    assert video_move.dest.parent.name == "2025-01-10"
+
+
+def test_video_with_only_later_neighbor_uses_that_date(tmp_path):
+    _touch(tmp_path / "a_video.mp4", mtime=datetime(1999, 1, 1).timestamp())
+    _touch(tmp_path / "z_20250110.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "a_video.mp4")
+
+    assert video_move.date_source == "estimated"
+    assert video_move.dest.parent.name == "2025-01-10"
+
+
+def test_video_with_no_reliable_neighbors_falls_back_to_mtime(tmp_path):
+    _touch(tmp_path / "only_video.mp4", mtime=datetime(2021, 3, 9).timestamp())
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = plan.moves[0]
+
+    assert video_move.date_source == "mtime"
+    assert video_move.dest.parent.name == "2021-03-09"
+
+
+def test_estimation_can_be_disabled_via_config(tmp_path):
+    _touch(tmp_path / "a_20250110.jpg")
+    _touch(tmp_path / "b_video.mp4", mtime=datetime(1999, 1, 1).timestamp())
+    _touch(tmp_path / "c_20250120.jpg")
+
+    cfg = Config(estimate_missing_dates_from_neighbors=False)
+    plan = organize.build_plan(tmp_path, cfg)
+    video_move = next(mv for mv in plan.moves if mv.source.name == "b_video.mp4")
+
+    assert video_move.date_source == "mtime"
+    assert video_move.dest.parent.name == "1999-01-01"

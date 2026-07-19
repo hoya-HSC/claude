@@ -33,6 +33,10 @@ class Config:
 
     hash_algorithm: str = "blake2b"
 
+    file_thumbnail_px: int = 256
+    """Longest-edge size of the per-file browse thumbnail stored in the DB.
+    Larger = crisper galleries but more database size across a big library."""
+
 
 def load_config() -> Config:
     cfg = Config()

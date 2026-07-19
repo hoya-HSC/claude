@@ -108,6 +108,15 @@ def _process_faces_batch(conn: sqlite3.Connection, cfg: Config, embedder) -> int
             for frame in frames:
                 detections.extend(embedder.detect(frame))
             store_detected_faces(conn, row["id"], detections, cfg)
+
+            # Reuse the already-decoded first frame for the browse thumbnail
+            # so galleries don't need to re-open (or reach) the source file.
+            if frames:
+                from .faces import make_file_thumbnail
+                thumb = make_file_thumbnail(frames[0], cfg.file_thumbnail_px)
+                conn.execute(
+                    "UPDATE files SET thumbnail = ? WHERE id = ?", (thumb, row["id"])
+                )
         except Exception as exc:
             # One unreadable/corrupt file out of hundreds of thousands
             # shouldn't abort the whole batch -- log it and move on. It's

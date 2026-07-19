@@ -25,6 +25,11 @@ def index() -> str:
     return (TEMPLATES_DIR / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/browse", response_class=HTMLResponse)
+def browse() -> str:
+    return (TEMPLATES_DIR / "browse.html").read_text(encoding="utf-8")
+
+
 @app.get("/api/clusters")
 def list_clusters(min_size: int = 3, limit: int = 20):
     conn = _conn()
@@ -214,5 +219,74 @@ def list_events():
             "GROUP BY ev.id ORDER BY ev.start_at DESC"
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def _files_response(rows) -> list[dict]:
+    return [
+        {
+            "file_id": row["id"],
+            "name": Path(row["relative_path"]).name,
+            "media_type": row["media_type"],
+            "taken_at": row["taken_at"],
+            "has_thumbnail": row["thumbnail"] is not None,
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/people/{person_id}/files")
+def person_files(person_id: int):
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT fi.id, fi.relative_path, fi.media_type, fi.taken_at, fi.thumbnail "
+            "FROM files fi JOIN faces fa ON fa.file_id = fi.id "
+            "WHERE fa.person_id = ? AND fa.review_status = 'confirmed' AND fi.status = 'active' "
+            "ORDER BY fi.taken_at",
+            (person_id,),
+        ).fetchall()
+        return _files_response(rows)
+    finally:
+        conn.close()
+
+
+@app.get("/api/events/{event_id}/files")
+def event_files(event_id: int):
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, relative_path, media_type, taken_at, thumbnail FROM files "
+            "WHERE event_id = ? AND status = 'active' ORDER BY taken_at",
+            (event_id,),
+        ).fetchall()
+        return _files_response(rows)
+    finally:
+        conn.close()
+
+
+@app.get("/api/places/{place_id}/files")
+def place_files(place_id: int):
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, relative_path, media_type, taken_at, thumbnail FROM files "
+            "WHERE place_id = ? AND status = 'active' ORDER BY taken_at",
+            (place_id,),
+        ).fetchall()
+        return _files_response(rows)
+    finally:
+        conn.close()
+
+
+@app.get("/api/files/{file_id}/thumbnail")
+def file_thumbnail(file_id: int):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT thumbnail FROM files WHERE id = ?", (file_id,)).fetchone()
+        if row is None or row["thumbnail"] is None:
+            raise HTTPException(status_code=404, detail="thumbnail not available")
+        return Response(content=row["thumbnail"], media_type="image/jpeg")
     finally:
         conn.close()

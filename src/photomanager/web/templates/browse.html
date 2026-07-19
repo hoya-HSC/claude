@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Photo Manager - 둘러보기</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; background: #f7f7f8; }
+  h1 { font-size: 1.4rem; }
+  a { color: #06c; }
+  .tabs { display: flex; gap: 0.5rem; margin: 1rem 0; }
+  .tabs button { padding: 0.5rem 1.2rem; cursor: pointer; border: 1px solid #ccc; background: white; border-radius: 6px; }
+  .tabs button.active { background: #06c; color: white; border-color: #06c; }
+  .groups { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .group-card {
+    background: white; border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem 1rem;
+    cursor: pointer; min-width: 140px;
+  }
+  .group-card:hover { border-color: #06c; }
+  .group-card .name { font-weight: bold; }
+  .group-card .count { color: #666; font-size: 0.85rem; }
+  .gallery { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
+  .gallery .cell { position: relative; }
+  .gallery img, .gallery .ph {
+    width: 150px; height: 150px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc;
+    display: block; background: #eee;
+  }
+  .gallery .ph { display: flex; align-items: center; justify-content: center; font-size: 2rem; }
+  .gallery .vid-badge {
+    position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.6);
+    color: white; padding: 1px 5px; border-radius: 3px; font-size: 0.75rem;
+  }
+  .meta { color: #666; font-size: 0.9rem; }
+  .back { margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>사진 둘러보기 <span class="meta">(<a href="/">← 인물 검수로</a>)</span></h1>
+
+<div class="tabs">
+  <button data-kind="people" class="active">인물</button>
+  <button data-kind="places">장소</button>
+  <button data-kind="events">이벤트</button>
+</div>
+
+<div id="groups" class="groups"></div>
+<div id="gallery"></div>
+
+<script>
+let currentKind = 'people';
+
+const KIND_LABEL = { people: '인물', places: '장소', events: '이벤트' };
+
+function groupName(kind, g) {
+  if (kind === 'people') return g.name;
+  if (kind === 'places') return g.name || '(장소 미상)';
+  // events
+  const start = (g.start_at || '').slice(0, 10);
+  const end = (g.end_at || '').slice(0, 10);
+  const range = start === end ? start : `${start} ~ ${end}`;
+  return g.place_name ? `${range} · ${g.place_name}` : range;
+}
+
+async function loadGroups(kind) {
+  currentKind = kind;
+  document.querySelectorAll('.tabs button').forEach(b =>
+    b.classList.toggle('active', b.dataset.kind === kind));
+  document.getElementById('gallery').innerHTML = '';
+
+  const res = await fetch(`/api/${kind}`);
+  const groups = await res.json();
+  const root = document.getElementById('groups');
+  root.innerHTML = '';
+  if (groups.length === 0) {
+    root.innerHTML = `<p class="meta">${KIND_LABEL[kind]} 데이터가 없습니다.</p>`;
+    return;
+  }
+  for (const g of groups) {
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    card.innerHTML = `
+      <div class="name">${groupName(kind, g)}</div>
+      <div class="count">${g.photo_count}개</div>
+    `;
+    card.addEventListener('click', () => loadGallery(kind, g.id, groupName(kind, g)));
+    root.appendChild(card);
+  }
+}
+
+async function loadGallery(kind, id, title) {
+  const res = await fetch(`/api/${kind}/${id}/files`);
+  const files = await res.json();
+  const gallery = document.getElementById('gallery');
+  gallery.innerHTML = `
+    <div class="back"><strong>${title}</strong> — ${files.length}개</div>
+    <div class="gallery"></div>
+  `;
+  const grid = gallery.querySelector('.gallery');
+  for (const f of files) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    if (f.has_thumbnail) {
+      const img = document.createElement('img');
+      img.src = `/api/files/${f.file_id}/thumbnail`;
+      img.loading = 'lazy';
+      img.title = `${f.name}\n${f.taken_at || ''}`;
+      cell.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'ph';
+      ph.textContent = f.media_type === 'video' ? '🎞️' : '🖼️';
+      ph.title = `${f.name}\n(썸네일 없음 - 다시 처리하면 생성됩니다)`;
+      cell.appendChild(ph);
+    }
+    if (f.media_type === 'video') {
+      const badge = document.createElement('div');
+      badge.className = 'vid-badge';
+      badge.textContent = '▶';
+      cell.appendChild(badge);
+    }
+    grid.appendChild(cell);
+  }
+}
+
+document.querySelectorAll('.tabs button').forEach(b =>
+  b.addEventListener('click', () => loadGroups(b.dataset.kind)));
+loadGroups('people');
+</script>
+</body>
+</html>

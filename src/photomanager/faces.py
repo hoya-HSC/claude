@@ -40,6 +40,15 @@ def crop_thumbnail(
     return buf.getvalue()
 
 
+def make_file_thumbnail(frame_bgr: np.ndarray, max_px: int = 256) -> bytes:
+    """Downscaled whole-frame JPEG for the browse galleries (person/place/event)."""
+    img = Image.fromarray(frame_bgr[:, :, ::-1])
+    img.thumbnail((max_px, max_px))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80)
+    return buf.getvalue()
+
+
 class FaceEmbedder:
     """GPU-backed face detector + embedder using InsightFace's buffalo_l model pack.
 

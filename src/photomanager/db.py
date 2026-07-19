@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS files (
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'missing')),
     metadata_processed INTEGER NOT NULL DEFAULT 0,
     faces_processed INTEGER NOT NULL DEFAULT 0,
+    thumbnail BLOB,
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     UNIQUE (volume_id, relative_path)
@@ -90,9 +91,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS in SCHEMA is a no-op against an existing
     table, so new columns need an explicit ALTER TABLE here.
     """
-    existing = {row["name"] for row in conn.execute("PRAGMA table_info(faces)").fetchall()}
-    if "thumbnail" not in existing:
+    face_cols = {row["name"] for row in conn.execute("PRAGMA table_info(faces)").fetchall()}
+    if "thumbnail" not in face_cols:
         conn.execute("ALTER TABLE faces ADD COLUMN thumbnail BLOB")
+
+    file_cols = {row["name"] for row in conn.execute("PRAGMA table_info(files)").fetchall()}
+    if "thumbnail" not in file_cols:
+        conn.execute("ALTER TABLE files ADD COLUMN thumbnail BLOB")
 
 
 @contextmanager

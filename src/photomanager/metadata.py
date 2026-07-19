@@ -17,7 +17,17 @@ class MediaMetadata:
 
 
 _GPS_TAG_ID = next((k for k, v in ExifTags.TAGS.items() if v == "GPSInfo"), None)
-_DATETIME_TAG_ID = next((k for k, v in ExifTags.TAGS.items() if v == "DateTimeOriginal"), None)
+
+# DateTimeOriginal / DateTimeDigitized live in the Exif sub-IFD (pointer
+# 0x8769), NOT the main IFD that img.getexif() returns. Reading them off the
+# main IFD always yields None -- which silently sent every photo to its file
+# modification time. DateTime (306) is the one datetime that IS in the main
+# IFD, used only as a last resort (it's the file-edit time, less reliable
+# than the capture time, but still better than mtime).
+_EXIF_IFD_POINTER = 0x8769
+_DATETIME_ORIGINAL = 36867
+_DATETIME_DIGITIZED = 36868
+_DATETIME_MAIN = 306
 
 
 def extract_photo_metadata(path: Path) -> MediaMetadata:
@@ -27,9 +37,20 @@ def extract_photo_metadata(path: Path) -> MediaMetadata:
     except Exception:
         return MediaMetadata(None, None, None)
 
-    taken_at = _parse_exif_datetime(exif.get(_DATETIME_TAG_ID)) if exif else None
+    if not exif:
+        return MediaMetadata(None, None, None)
+
+    taken_at = None
+    exif_ifd = exif.get_ifd(_EXIF_IFD_POINTER)
+    for tag in (_DATETIME_ORIGINAL, _DATETIME_DIGITIZED):
+        taken_at = _parse_exif_datetime(exif_ifd.get(tag))
+        if taken_at is not None:
+            break
+    if taken_at is None:
+        taken_at = _parse_exif_datetime(exif.get(_DATETIME_MAIN))
+
     lat = lon = None
-    if exif and _GPS_TAG_ID in exif:
+    if _GPS_TAG_ID in exif:
         gps_ifd = exif.get_ifd(_GPS_TAG_ID)
         lat, lon = _parse_gps_ifd(gps_ifd)
 

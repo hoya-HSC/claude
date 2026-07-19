@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "piexif>=1.1", "hdbscan>=0.8.33"]
 
 [project.scripts]
 photomanager = "photomanager.cli:main"

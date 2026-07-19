@@ -9,6 +9,7 @@ dependencies:
   - pip
   - pip:
       - Pillow>=10.0
+      - pillow-heif>=0.16
       - fastapi>=0.110
       - uvicorn[standard]>=0.29
       - numpy>=1.26

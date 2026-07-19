@@ -8,6 +8,12 @@ from pathlib import Path
 
 from PIL import ExifTags, Image
 
+# On Windows, spawning a console subprocess (ffprobe) from a GUI app with no
+# console of its own pops up a visible console window per call -- with many
+# video files that looks like windows flickering open/closed repeatedly.
+# CREATE_NO_WINDOW only exists on Windows; 0 is a harmless no-op elsewhere.
+_SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 @dataclass
 class MediaMetadata:
@@ -88,6 +94,7 @@ def extract_video_metadata(path: Path) -> MediaMetadata:
                 str(path),
             ],
             capture_output=True, text=True, timeout=30, check=True,
+            creationflags=_SUBPROCESS_FLAGS,
         )
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
         return MediaMetadata(None, None, None)

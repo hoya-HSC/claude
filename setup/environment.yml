@@ -16,6 +16,10 @@ dependencies:
       - scenedetect[opencv]>=0.6
       - insightface>=0.7.3
       - onnx>=1.15
+      # insightface depends on plain CPU-only onnxruntime, which installs into
+      # the same path as onnxruntime-gpu and can leave it broken. This pin
+      # alone doesn't guarantee install order, so setup_windows.ps1 forces
+      # onnxruntime-gpu back in with --no-deps right after this env is created.
       - onnxruntime-gpu>=1.17,<1.19
       - hdbscan>=0.8.33
       - faiss-cpu>=1.8

@@ -31,6 +31,13 @@ Write-Host "This installs cudatoolkit + cudnn inside the env, so it does not tou
 Write-Host "any system-wide CUDA install and needs no admin rights or reboot." -ForegroundColor DarkGray
 conda env update -n photomanager -f "$ScriptDir\environment.yml" --prune
 
+Write-Host "`n== 3b. Resolving onnxruntime / onnxruntime-gpu conflict ==" -ForegroundColor Cyan
+Write-Host "insightface depends on plain CPU-only 'onnxruntime', which installs into" -ForegroundColor DarkGray
+Write-Host "the same path as 'onnxruntime-gpu' and can silently overwrite it. Force" -ForegroundColor DarkGray
+Write-Host "onnxruntime-gpu to be the one left standing." -ForegroundColor DarkGray
+conda run -n photomanager pip uninstall -y onnxruntime onnxruntime-gpu
+conda run -n photomanager pip install --no-deps "onnxruntime-gpu>=1.17,<1.19"
+
 Write-Host "`n== 4. Verifying GPU is reachable from onnxruntime ==" -ForegroundColor Cyan
 conda run -n photomanager python "$ScriptDir\check_gpu.py"
 

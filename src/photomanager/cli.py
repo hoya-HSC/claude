@@ -27,6 +27,14 @@ def main() -> None:
         "--apply", action="store_true",
         help="Actually move files. Without this, only a preview is printed.",
     )
+    org_parser.add_argument(
+        "--list", action="store_true",
+        help="List every planned move file-by-file instead of the folder summary.",
+    )
+    org_parser.add_argument(
+        "--report", metavar="CSV",
+        help="Write the full plan (every file -> folder, date source) to a CSV file.",
+    )
 
     args = parser.parse_args()
     cfg = load_config()
@@ -79,10 +87,36 @@ def main() -> None:
         print(f"이미 같은 파일 존재(중복, 건너뜀): {len(plan.duplicates)}개")
         print(f"이미 날짜 폴더에 있음: {plan.skipped_already_sorted}개")
 
-        for mv in plan.moves[:20]:
-            print(f"  {mv.source.name}  ->  {mv.dest.parent.name}/  [{mv.date_source}]")
-        if len(plan.moves) > 20:
-            print(f"  ... 외 {len(plan.moves) - 20}개")
+        # Per-destination-folder summary, so hundreds of files stay readable.
+        from collections import Counter
+        folder_counts = Counter(mv.dest.parent.name for mv in plan.moves)
+        print(f"\n생성될 날짜 폴더: {len(folder_counts)}개")
+        for folder, count in sorted(folder_counts.items()):
+            print(f"  {folder}/   {count}개")
+
+        # mtime-dated files are the least reliable (no EXIF, no date in name),
+        # so surface those specifically -- they're the ones worth eyeballing.
+        mtime_moves = [mv for mv in plan.moves if mv.date_source == "mtime"]
+        if mtime_moves:
+            print(f"\n※ 수정시간으로 추정된 파일 {len(mtime_moves)}개 (촬영일과 다를 수 있음):")
+            for mv in mtime_moves[:15]:
+                print(f"  {mv.source.name}  ->  {mv.dest.parent.name}/")
+            if len(mtime_moves) > 15:
+                print(f"  ... 외 {len(mtime_moves) - 15}개 (전체는 --report 로 CSV 저장)")
+
+        if args.list:
+            print("\n[전체 목록]")
+            for mv in plan.moves:
+                print(f"  {mv.source.name}  ->  {mv.dest.parent.name}/  [{mv.date_source}]")
+
+        if args.report:
+            import csv
+            with open(args.report, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["파일명", "이동폴더", "날짜판정근거"])
+                for mv in plan.moves:
+                    writer.writerow([mv.source.name, mv.dest.parent.name, mv.date_source])
+            print(f"\n전체 계획을 CSV로 저장: {args.report}")
 
         if args.apply:
             moved = organize.apply_plan(plan)

@@ -40,7 +40,6 @@ def main() -> int:
 
 
 def _tiny_identity_model() -> bytes:
-    import onnx
     from onnx import TensorProto, helper
 
     x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 2])
@@ -48,6 +47,9 @@ def _tiny_identity_model() -> bytes:
     node = helper.make_node("Identity", ["x"], ["y"])
     graph = helper.make_graph([node], "identity", [x], [y])
     model = helper.make_model(graph, producer_name="photomanager-check")
+    # Pin to an IR version this onnxruntime build is guaranteed to load,
+    # regardless of how new the installed onnx package's default IR version is.
+    model.ir_version = 10
     return model.SerializeToString()
 
 

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS faces (
     file_id INTEGER NOT NULL REFERENCES files(id),
     bbox TEXT NOT NULL,
     embedding BLOB NOT NULL,
+    thumbnail BLOB,
     person_id INTEGER REFERENCES people(id),
     distance_to_person REAL,
     review_status TEXT NOT NULL DEFAULT 'pending'
@@ -79,7 +80,19 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a database already existed.
+
+    CREATE TABLE IF NOT EXISTS in SCHEMA is a no-op against an existing
+    table, so new columns need an explicit ALTER TABLE here.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(faces)").fetchall()}
+    if "thumbnail" not in existing:
+        conn.execute("ALTER TABLE faces ADD COLUMN thumbnail BLOB")
 
 
 @contextmanager

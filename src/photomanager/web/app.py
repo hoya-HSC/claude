@@ -1,30 +1,19 @@
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
-from PIL import Image
 from pydantic import BaseModel
 
 from ..clustering import propose_clusters_for_unassigned
 from ..config import load_config
 from ..db import connect
 
-try:
-    import pillow_heif
-    pillow_heif.register_heif_opener()
-except ImportError:
-    pass
-
 app = FastAPI(title="Photo Manager Review")
 _cfg = load_config()
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
-
-FACE_CROP_MARGIN = 0.3
-"""Extra padding around the detected bbox so hair/chin aren't cut off."""
 
 
 def _conn():
@@ -73,44 +62,18 @@ def review_queue(limit: int = 50):
 def face_image(face_id: int):
     conn = _conn()
     try:
-        row = conn.execute(
-            "SELECT vo.mount_root, fi.relative_path, fi.media_type, fa.bbox FROM faces fa "
-            "JOIN files fi ON fi.id = fa.file_id "
-            "JOIN volumes vo ON vo.id = fi.volume_id "
-            "WHERE fa.id = ?",
-            (face_id,),
-        ).fetchone()
+        row = conn.execute("SELECT thumbnail FROM faces WHERE id = ?", (face_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="face not found")
-        if row["media_type"] != "photo":
-            raise HTTPException(status_code=404, detail="preview not available for video faces yet")
-        path = Path(row["mount_root"]) / row["relative_path"]
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="source file not available")
-
-        try:
-            image = Image.open(path).convert("RGB")
-        except Exception:
-            raise HTTPException(status_code=422, detail="could not decode source image")
-
-        crop = _crop_face(image, row["bbox"])
-        buf = io.BytesIO()
-        crop.save(buf, format="JPEG", quality=85)
-        return Response(content=buf.getvalue(), media_type="image/jpeg")
+        if row["thumbnail"] is None:
+            # Faces stored before the thumbnail column existed; re-running the
+            # pipeline on their file will backfill it (faces_processed is
+            # keyed per-file, so a full run only touches unprocessed files --
+            # see the migration note in db.py for how to force a refresh).
+            raise HTTPException(status_code=404, detail="thumbnail not available for this face")
+        return Response(content=row["thumbnail"], media_type="image/jpeg")
     finally:
         conn.close()
-
-
-def _crop_face(image: Image.Image, bbox_str: str) -> Image.Image:
-    x1, y1, x2, y2 = (float(v) for v in bbox_str.split(","))
-    w, h = x2 - x1, y2 - y1
-    x1 -= w * FACE_CROP_MARGIN
-    x2 += w * FACE_CROP_MARGIN
-    y1 -= h * FACE_CROP_MARGIN
-    y2 += h * FACE_CROP_MARGIN
-    x1, y1 = max(0, int(x1)), max(0, int(y1))
-    x2, y2 = min(image.width, int(x2)), min(image.height, int(y2))
-    return image.crop((x1, y1, x2, y2))
 
 
 class NameClusterRequest(BaseModel):

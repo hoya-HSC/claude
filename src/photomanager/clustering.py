@@ -63,12 +63,13 @@ def store_detected_faces(
     for face in detections:
         assignment = assign_face(face.embedding, centroids, cfg)
         cur = conn.execute(
-            "INSERT INTO faces (file_id, bbox, embedding, person_id, distance_to_person, review_status) "
-            "VALUES (?, ?, ?, ?, ?, 'pending')",
+            "INSERT INTO faces (file_id, bbox, embedding, thumbnail, person_id, distance_to_person, review_status) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
             (
                 file_id,
                 ",".join(f"{v:.2f}" for v in face.bbox),
                 embedding_to_blob(face.embedding),
+                face.thumbnail,
                 assignment.person_id,
                 assignment.distance,
             ),

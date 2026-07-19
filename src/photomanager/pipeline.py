@@ -14,6 +14,12 @@ from .events import TimelineItem, cluster_events
 from .geocode import get_or_create_place
 from .metadata import extract_metadata
 
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
 
 @dataclass
 class PipelineStats:
@@ -91,16 +97,24 @@ def _process_faces_batch(conn: sqlite3.Connection, cfg: Config, embedder) -> int
         ).fetchone()
         path = Path(volume["mount_root"]) / row["relative_path"]
 
-        if row["media_type"] == "photo":
-            frames = [np.asarray(Image.open(path).convert("RGB"))[:, :, ::-1]]
-        else:
-            from .video import extract_keyframes
-            frames = extract_keyframes(path)
+        try:
+            if row["media_type"] == "photo":
+                frames = [np.asarray(Image.open(path).convert("RGB"))[:, :, ::-1]]
+            else:
+                from .video import extract_keyframes
+                frames = extract_keyframes(path)
 
-        detections = []
-        for frame in frames:
-            detections.extend(embedder.detect(frame))
-        store_detected_faces(conn, row["id"], detections, cfg)
+            detections = []
+            for frame in frames:
+                detections.extend(embedder.detect(frame))
+            store_detected_faces(conn, row["id"], detections, cfg)
+        except Exception as exc:
+            # One unreadable/corrupt file out of hundreds of thousands
+            # shouldn't abort the whole batch -- log it and move on. It's
+            # marked processed so it doesn't get retried forever; delete
+            # that flag manually (faces_processed = 0) to force a retry.
+            print(f"skipping {path}: {exc}")
+            conn.execute("UPDATE files SET faces_processed = 1 WHERE id = ?", (row["id"],))
 
     return len(rows)
 

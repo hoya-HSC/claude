@@ -35,7 +35,10 @@ def list_clusters(min_size: int = 3, limit: int = 20):
             result.append({
                 "cluster_label": label,
                 "size": len(face_ids),
-                "sample_face_ids": face_ids[:8],
+                # full list, so confirm/skip act on every face in the cluster;
+                # sample_face_ids is only what the UI renders as thumbnails.
+                "face_ids": face_ids,
+                "sample_face_ids": face_ids[:12],
             })
         return result
     finally:
@@ -125,6 +128,29 @@ def reject_face(face_id: int):
         )
         conn.commit()
         return {"ok": True}
+    finally:
+        conn.close()
+
+
+class RejectClusterRequest(BaseModel):
+    face_ids: list[int]
+
+
+@app.post("/api/faces/reject-batch")
+def reject_faces(req: RejectClusterRequest):
+    """Mark a whole cluster as '추정 불가' (can't identify / wrongly grouped).
+
+    Rejected faces are excluded from future clustering, so a skipped cluster
+    won't keep reappearing.
+    """
+    conn = _conn()
+    try:
+        conn.executemany(
+            "UPDATE faces SET person_id = NULL, review_status = 'rejected' WHERE id = ?",
+            [(fid,) for fid in req.face_ids],
+        )
+        conn.commit()
+        return {"ok": True, "rejected": len(req.face_ids)}
     finally:
         conn.close()
 

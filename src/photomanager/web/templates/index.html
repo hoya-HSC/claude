@@ -8,21 +8,37 @@
   h1 { font-size: 1.4rem; }
   .cluster { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
   .thumbs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .thumbs img { width: 90px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; }
+  .thumb { position: relative; cursor: pointer; }
+  .thumb img, .thumb-fallback {
+    width: 90px; height: 90px; object-fit: cover; border-radius: 4px;
+    border: 2px solid #ccc; display: block;
+  }
   .thumb-fallback {
-    width: 90px; height: 90px; border-radius: 4px; border: 1px solid #ccc;
     background: #eee; display: flex; align-items: center; justify-content: center;
     font-size: 1.6rem;
   }
-  .cluster form { margin-top: 0.75rem; display: flex; gap: 0.5rem; }
+  .thumb.excluded img, .thumb.excluded .thumb-fallback { opacity: 0.3; border-color: #c00; }
+  .thumb .badge {
+    position: absolute; top: 2px; right: 2px; background: #c00; color: white;
+    border-radius: 50%; width: 20px; height: 20px; font-size: 0.8rem;
+    display: none; align-items: center; justify-content: center; line-height: 1;
+  }
+  .thumb.excluded .badge { display: flex; }
+  .controls { margin-top: 0.75rem; display: flex; gap: 0.5rem; align-items: center; }
   input[type=text] { padding: 0.4rem; flex: 1; }
   button { padding: 0.4rem 0.9rem; cursor: pointer; }
+  button.skip { background: #f3f3f3; }
   .meta { color: #666; font-size: 0.85rem; }
+  .hint { color: #999; font-size: 0.8rem; margin-top: 0.4rem; }
 </style>
 </head>
 <body>
 <h1>인물로 추정되는 얼굴 군집 검수</h1>
-<p class="meta">아직 이름이 없는 얼굴들을 유사도 기준으로 묶은 결과입니다. 같은 사람이면 이름을 입력해 확정하세요.</p>
+<p class="meta">
+  아직 이름이 없는 얼굴들을 유사도 기준으로 묶은 결과입니다.
+  같은 사람이면 이름을 입력해 확정하세요. 잘못 섞인 얼굴은 클릭해서 제외할 수 있고,
+  누군지 모르겠으면 "추정 불가"로 건너뛰세요.
+</p>
 <div id="clusters"></div>
 
 <script>
@@ -36,45 +52,79 @@ async function loadClusters() {
     return;
   }
   for (const c of clusters) {
-    const div = document.createElement('div');
-    div.className = 'cluster';
-    div.innerHTML = `
-      <div class="meta">군집 #${c.cluster_label} — 얼굴 ${c.size}개</div>
-      <div class="thumbs"></div>
-      <form data-ids='${JSON.stringify(c.sample_face_ids)}'>
-        <input type="text" placeholder="이름 입력 (예: 엄마)" required>
-        <button type="submit">이 사람으로 확정</button>
-      </form>
-    `;
-    const thumbsEl = div.querySelector('.thumbs');
-    for (const id of c.sample_face_ids) {
-      const img = document.createElement('img');
-      img.src = `/api/faces/${id}/image`;
-      img.loading = 'lazy';
-      img.onerror = () => {
-        const fallback = document.createElement('div');
-        fallback.className = 'thumb-fallback';
-        fallback.title = '미리보기를 불러올 수 없음 (이 파일을 다시 처리하면 생성됩니다)';
-        fallback.textContent = '❓';
-        img.replaceWith(fallback);
-      };
-      thumbsEl.appendChild(img);
-    }
-    div.querySelector('form').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const form = ev.target;
-      const name = form.querySelector('input').value.trim();
-      const face_ids = JSON.parse(form.dataset.ids);
-      await fetch('/api/people/name-cluster', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({name, face_ids}),
-      });
-      loadClusters();
-    });
-    root.appendChild(div);
+    root.appendChild(renderCluster(c));
   }
 }
+
+function renderCluster(c) {
+  const excluded = new Set();  // sample face_ids the user clicked to drop
+
+  const div = document.createElement('div');
+  div.className = 'cluster';
+  div.innerHTML = `
+    <div class="meta">군집 #${c.cluster_label} — 얼굴 ${c.size}개${
+      c.size > c.sample_face_ids.length ? ` (아래는 대표 ${c.sample_face_ids.length}개)` : ''
+    }</div>
+    <div class="thumbs"></div>
+    <div class="controls">
+      <input type="text" placeholder="이름 입력 (예: 엄마)">
+      <button class="confirm">이 사람으로 확정</button>
+      <button class="skip">추정 불가 (건너뛰기)</button>
+    </div>
+    <div class="hint">얼굴을 클릭하면 이 사람에서 제외됩니다.</div>
+  `;
+
+  const thumbsEl = div.querySelector('.thumbs');
+  for (const id of c.sample_face_ids) {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    const img = document.createElement('img');
+    img.src = `/api/faces/${id}/image`;
+    img.loading = 'lazy';
+    img.onerror = () => {
+      const fallback = document.createElement('div');
+      fallback.className = 'thumb-fallback';
+      fallback.title = '미리보기를 불러올 수 없음 (이 파일을 다시 처리하면 생성됩니다)';
+      fallback.textContent = '❓';
+      img.replaceWith(fallback);
+    };
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.textContent = '×';
+    wrap.appendChild(img);
+    wrap.appendChild(badge);
+    wrap.addEventListener('click', () => {
+      if (excluded.has(id)) { excluded.delete(id); wrap.classList.remove('excluded'); }
+      else { excluded.add(id); wrap.classList.add('excluded'); }
+    });
+    thumbsEl.appendChild(wrap);
+  }
+
+  div.querySelector('.confirm').addEventListener('click', async () => {
+    const name = div.querySelector('input').value.trim();
+    if (!name) { alert('이름을 입력하세요.'); return; }
+    const face_ids = c.face_ids.filter(id => !excluded.has(id));
+    if (face_ids.length === 0) { alert('제외하지 않은 얼굴이 없습니다.'); return; }
+    await fetch('/api/people/name-cluster', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, face_ids}),
+    });
+    loadClusters();
+  });
+
+  div.querySelector('.skip').addEventListener('click', async () => {
+    await fetch('/api/faces/reject-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({face_ids: c.face_ids}),
+    });
+    loadClusters();
+  });
+
+  return div;
+}
+
 loadClusters();
 </script>
 </body>

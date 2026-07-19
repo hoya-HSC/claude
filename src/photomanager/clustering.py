@@ -91,7 +91,8 @@ def propose_clusters_for_unassigned(
     import hdbscan
 
     rows = conn.execute(
-        "SELECT id, embedding FROM faces WHERE person_id IS NULL"
+        "SELECT id, embedding FROM faces "
+        "WHERE person_id IS NULL AND review_status = 'pending'"
     ).fetchall()
     if len(rows) < min_cluster_size:
         return {}

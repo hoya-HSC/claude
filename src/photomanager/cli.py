@@ -36,6 +36,16 @@ def main() -> None:
         help="Write the full plan (every file -> folder, date source) to a CSV file.",
     )
 
+    ren_parser = sub.add_parser(
+        "rename-folders",
+        help="Reformat folder names like YYYYMMDD_x to YYYY-MM-DD_x, recursively (dry-run by default)",
+    )
+    ren_parser.add_argument("directory", help="Root folder to scan for renamable subfolders")
+    ren_parser.add_argument(
+        "--apply", action="store_true",
+        help="Actually rename folders. Without this, only a preview is printed.",
+    )
+
     args = parser.parse_args()
     cfg = load_config()
 
@@ -99,6 +109,24 @@ def main() -> None:
             print(f"\n이동 완료: {moved}개")
         else:
             print("\n[미리보기] 실제로 옮기려면 --apply 를 붙여 다시 실행하세요.")
+
+    elif args.command == "rename-folders":
+        from pathlib import Path
+
+        from . import rename_folders
+
+        directory = Path(args.directory)
+        if not directory.is_dir():
+            raise SystemExit(f"not a directory: {directory}")
+
+        plan = rename_folders.build_rename_plan(directory)
+        print(rename_folders.summarize_plan(plan))
+
+        if args.apply:
+            renamed = rename_folders.apply_rename_plan(plan)
+            print(f"\n이름 변경 완료: {renamed}개")
+        else:
+            print("\n[미리보기] 실제로 바꾸려면 --apply 를 붙여 다시 실행하세요.")
 
 
 if __name__ == "__main__":

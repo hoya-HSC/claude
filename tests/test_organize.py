@@ -159,11 +159,11 @@ def test_summarize_plan_full_list_omitted_when_nothing_to_move(tmp_path):
 
 # --- neighbor-based date estimation (for videos with no EXIF/media date) ---
 
-def test_video_between_two_dated_photos_is_interpolated(tmp_path):
-    # sorted order: a_20250110 < b_video < c_20250120; mtime agrees with the
-    # interpolated midpoint, so the sanity check accepts the estimate.
+def test_mtime_outside_neighbor_range_gets_interpolated(tmp_path):
+    # sorted order: a_20250110 < b_video < c_20250120; mtime (2030, way past
+    # both anchors) is implausible, so it gets replaced by the interpolation.
     _touch(tmp_path / "a_20250110.jpg")
-    _touch(tmp_path / "b_video.mp4", mtime=datetime(2025, 1, 15).timestamp())
+    _touch(tmp_path / "b_video.mp4", mtime=datetime(2030, 1, 1).timestamp())
     _touch(tmp_path / "c_20250120.jpg")
 
     plan = organize.build_plan(tmp_path, Config())
@@ -174,9 +174,29 @@ def test_video_between_two_dated_photos_is_interpolated(tmp_path):
     assert video_move.dest.parent.name == "2025-01-15"
 
 
-def test_video_with_only_earlier_neighbor_uses_that_date(tmp_path):
+def test_mtime_within_neighbor_range_is_trusted_even_off_midpoint(tmp_path):
+    """This is the exact real bug: P8124168.AVI's own mtime already said
+    8/12 (correct), but the file sat much closer to the 8/3 anchor than the
+    8/12 one in filename order, so the naive interpolated midpoint (8/11)
+    was wrong -- yet still close enough to slip past a mtime-vs-estimate
+    distance check. mtime should never be overridden just because it isn't
+    at the interpolated midpoint -- only when it's outside the range
+    entirely.
+    """
+    _touch(tmp_path / "a_20250101.jpg")
+    _touch(tmp_path / "b_video.mp4", mtime=datetime(2025, 1, 2, 12, 0, 0).timestamp())
+    _touch(tmp_path / "c_20250131.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "b_video.mp4")
+
+    assert video_move.date_source == "mtime"
+    assert video_move.dest.parent.name == "2025-01-02"
+
+
+def test_only_earlier_neighbor_implausible_mtime_gets_that_date(tmp_path):
     _touch(tmp_path / "a_20250110.jpg")
-    _touch(tmp_path / "z_video.mp4", mtime=datetime(2025, 1, 10).timestamp())
+    _touch(tmp_path / "z_video.mp4", mtime=datetime(1999, 1, 1).timestamp())  # earlier than a_ -- impossible
 
     plan = organize.build_plan(tmp_path, Config())
     video_move = next(mv for mv in plan.moves if mv.source.name == "z_video.mp4")
@@ -185,8 +205,19 @@ def test_video_with_only_earlier_neighbor_uses_that_date(tmp_path):
     assert video_move.dest.parent.name == "2025-01-10"
 
 
-def test_video_with_only_later_neighbor_uses_that_date(tmp_path):
-    _touch(tmp_path / "a_video.mp4", mtime=datetime(2025, 1, 10).timestamp())
+def test_only_earlier_neighbor_plausible_mtime_is_kept(tmp_path):
+    _touch(tmp_path / "a_20250110.jpg")
+    _touch(tmp_path / "z_video.mp4", mtime=datetime(2025, 1, 12).timestamp())  # after a_, plausible
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "z_video.mp4")
+
+    assert video_move.date_source == "mtime"
+    assert video_move.dest.parent.name == "2025-01-12"
+
+
+def test_only_later_neighbor_implausible_mtime_gets_that_date(tmp_path):
+    _touch(tmp_path / "a_video.mp4", mtime=datetime(2030, 1, 1).timestamp())  # later than z_ -- impossible
     _touch(tmp_path / "z_20250110.jpg")
 
     plan = organize.build_plan(tmp_path, Config())
@@ -196,12 +227,23 @@ def test_video_with_only_later_neighbor_uses_that_date(tmp_path):
     assert video_move.dest.parent.name == "2025-01-10"
 
 
+def test_only_later_neighbor_plausible_mtime_is_kept(tmp_path):
+    _touch(tmp_path / "a_video.mp4", mtime=datetime(2025, 1, 8).timestamp())  # before z_, plausible
+    _touch(tmp_path / "z_20250110.jpg")
+
+    plan = organize.build_plan(tmp_path, Config())
+    video_move = next(mv for mv in plan.moves if mv.source.name == "a_video.mp4")
+
+    assert video_move.date_source == "mtime"
+    assert video_move.dest.parent.name == "2025-01-08"
+
+
 def test_burst_of_same_day_videos_near_distant_photo_keeps_own_mtime(tmp_path):
-    """Reproduces the real bug: P8034163.JPG (8/3, exif) ... P8124164-168.AVI
-    (all actually shot 8/12, mtime says so) ... P8124169.JPG (8/12, exif).
-    Naive interpolation smeared the AVIs across 8/5-8/11; since their own
-    mtime already says 8/12 and disagrees with that smeared guess, the
-    estimate must be discarded and mtime kept.
+    """Reproduces the real bug end-to-end: P8034163.JPG (8/3, exif) ...
+    P8124164-168.AVI (all actually shot 8/12, mtime says so) ...
+    P8124169.JPG (8/12, exif). Every AVI's own mtime falls inside the
+    [8/3, 8/12] range, so all of them are trusted as-is instead of being
+    smeared across the gap.
     """
     _touch(tmp_path / "P8034162.JPG")  # unused, just realistic clutter
     _touch(tmp_path / "P8034163.JPG", mtime=datetime(2012, 8, 3).timestamp())
@@ -215,20 +257,6 @@ def test_burst_of_same_day_videos_near_distant_photo_keeps_own_mtime(tmp_path):
         mv = next(mv for mv in plan.moves if mv.source.name == f"P812{n}.AVI")
         assert mv.date_source == "mtime", f"P812{n}.AVI should keep its own mtime, not a smeared guess"
         assert mv.dest.parent.name == "2012-08-12"
-
-
-def test_estimate_rejected_when_it_disagrees_with_own_mtime(tmp_path):
-    _touch(tmp_path / "a_20250101.jpg")
-    _touch(tmp_path / "b_video.mp4", mtime=datetime(2025, 1, 2, 12, 0, 0).timestamp())
-    _touch(tmp_path / "c_20250131.jpg")
-
-    cfg = Config(estimate_max_days_from_mtime=1.0)
-    plan = organize.build_plan(tmp_path, cfg)
-    video_move = next(mv for mv in plan.moves if mv.source.name == "b_video.mp4")
-
-    # interpolated midpoint would be ~01-16, ~14 days from its own 01-02 mtime
-    assert video_move.date_source == "mtime"
-    assert video_move.dest.parent.name == "2025-01-02"
 
 
 def test_video_with_no_reliable_neighbors_falls_back_to_mtime(tmp_path):

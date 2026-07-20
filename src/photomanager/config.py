@@ -39,14 +39,10 @@ class Config:
 
     estimate_missing_dates_from_neighbors: bool = True
     """When a file (typically a video with no EXIF/media date) can only be
-    dated by mtime, interpolate from the nearest EXIF/filename-dated files
-    before/after it in the same folder instead of trusting mtime outright."""
-
-    estimate_max_days_from_mtime: float = 3.0
-    """Discard a neighbor-interpolated date if it disagrees with the file's
-    own mtime by more than this many days -- mtime is real evidence too, and
-    a burst of same-day videos sitting near an unrelated dated photo from a
-    different session should not get smeared across that gap."""
+    dated by mtime, check it against the nearest EXIF/filename-dated files
+    before/after it in the same folder: if mtime already falls in their date
+    range it's left alone, otherwise it's replaced with an interpolated
+    estimate between them."""
 
 
 def load_config() -> Config:

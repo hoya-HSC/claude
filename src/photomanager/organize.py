@@ -128,25 +128,25 @@ class _Candidate:
     date_source: str
 
 
-def _estimate_from_neighbors(candidates: list[_Candidate], max_days_from_mtime: float) -> None:
+def _estimate_from_neighbors(candidates: list[_Candidate]) -> None:
     """Fill in a date for mtime-only files (typically videos with no EXIF/
-    media date) by interpolating between the nearest reliable (exif/filename)
-    neighbours in filename order within the same folder.
+    media date) using the nearest reliable (exif/filename) neighbours in
+    filename order within the same folder.
 
-    A video shot in the middle of a photo session sits alphabetically between
-    two photos with real dates; this estimates its date proportionally to its
-    position between them. If only one side has a reliable neighbour, that
-    neighbour's date is used outright.
+    A file's own mtime is trusted whenever it's *plausible* given its
+    position: if it sits (by filename order) between two reliably-dated
+    neighbours, its true date should logically fall within their date range
+    too (file-transfer tools routinely preserve mtime even with no EXIF).
+    When mtime already falls inside that range, it's left alone -- there's
+    nothing to fix. Only when mtime falls *outside* the range it should
+    logically be in (e.g. a later re-copy or backup restore reset it) does
+    this replace it with an interpolated estimate between the neighbours.
 
-    Safety check: the file's own mtime is real evidence too, and file-transfer
-    tools often preserve it even when EXIF/media metadata is missing. If a
-    burst of same-day videos happens to sit between two photos from an
-    unrelated, much earlier or later session, naive interpolation smears them
-    across that whole gap -- e.g. five videos all actually shot on 8/12
-    landing on 8/5, 8/6, 8/8, 8/9, 8/11 because the previous dated photo was
-    from 8/3. If the interpolated guess disagrees with the file's own mtime
-    by more than max_days_from_mtime, the estimate is discarded and the
-    file's own mtime is kept instead of trusting the interpolation blindly.
+    This caught a real case: five videos all actually shot 8/12 (their own
+    mtime already said so) sat between a photo from 8/3 and one from 8/12 in
+    filename order. A naive "always interpolate" approach smeared them across
+    8/5-8/11; range-checking mtime first leaves all five at their own,
+    already-correct 8/12.
     """
     reliable_indices = [i for i, c in enumerate(candidates) if c.date_source in _RELIABLE_SOURCES]
     if not reliable_indices:
@@ -162,22 +162,29 @@ def _estimate_from_neighbors(candidates: list[_Candidate], max_days_from_mtime: 
         if before_idx is None and after_idx is None:
             continue  # no reliable neighbour on either side, mtime stands as-is
 
+        own = c.date
+
         if before_idx is not None and after_idx is not None:
             before, after = candidates[before_idx], candidates[after_idx]
+            lo, hi = min(before.date, after.date), max(before.date, after.date)
+            if lo <= own <= hi:
+                continue  # mtime is already plausible, leave it alone
             span = after_idx - before_idx
             weight = (i - before_idx) / span
-            estimated = before.date + (after.date - before.date) * weight
+            c.date = before.date + (after.date - before.date) * weight
+            c.date_source = "estimated"
         elif before_idx is not None:
-            estimated = candidates[before_idx].date
+            before = candidates[before_idx]
+            if own >= before.date:
+                continue  # can't logically predate a confirmed earlier file
+            c.date = before.date
+            c.date_source = "estimated"
         else:
-            estimated = candidates[after_idx].date
-
-        own_mtime = c.date
-        if abs((estimated - own_mtime).total_seconds()) > max_days_from_mtime * 86400:
-            continue  # disagrees too much with this file's own mtime -- don't override it
-
-        c.date = estimated
-        c.date_source = "estimated"
+            after = candidates[after_idx]
+            if own <= after.date:
+                continue  # can't logically postdate a confirmed later file
+            c.date = after.date
+            c.date_source = "estimated"
 
 
 def build_plan(source_directory: Path, cfg: Config) -> OrganizePlan:
@@ -196,7 +203,7 @@ def build_plan(source_directory: Path, cfg: Config) -> OrganizePlan:
         candidates.append(_Candidate(path=path, date=date, date_source=date_source))
 
     if cfg.estimate_missing_dates_from_neighbors:
-        _estimate_from_neighbors(candidates, cfg.estimate_max_days_from_mtime)
+        _estimate_from_neighbors(candidates)
 
     for c in candidates:
         folder_name = c.date.strftime("%Y-%m-%d")

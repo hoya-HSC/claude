@@ -37,13 +37,6 @@ class Config:
     """Longest-edge size of the per-file browse thumbnail stored in the DB.
     Larger = crisper galleries but more database size across a big library."""
 
-    estimate_missing_dates_from_neighbors: bool = True
-    """When a file (typically a video with no EXIF/media date) can only be
-    dated by mtime, check it against the nearest EXIF/filename-dated files
-    before/after it in the same folder: if mtime already falls in their date
-    range it's left alone, otherwise it's replaced with an interpolated
-    estimate between them."""
-
 
 def load_config() -> Config:
     cfg = Config()
